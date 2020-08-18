@@ -93,7 +93,7 @@ int fat_entry_to_shell_entry( const FAT_NODE* fat_entry, SHELL_ENTRY* shell_entr
 
 	return FAT_SUCCESS;
 }
-
+//fat_entry=shell_entry->pdata
 int shell_entry_to_fat_entry( const SHELL_ENTRY* shell_entry, FAT_NODE* fat_entry )
 {
 	FAT_NODE* entry = ( FAT_NODE* )shell_entry->pdata;
@@ -179,7 +179,7 @@ int fs_read_dir( DISK_OPERATIONS* disk, SHELL_FS_OPERATIONS* fsOprs, const SHELL
 	FAT_NODE	entry;
 
 	if( list->count )
-		release_entry_list( list );
+		release_entry_list( list ); //리스트 free하는건데 처음엔 count안정해져서 넘어가
 
 	shell_entry_to_fat_entry( parent, &entry );
 	fat_read_dir( &entry, adder, list );

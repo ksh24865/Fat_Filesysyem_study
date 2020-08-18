@@ -336,7 +336,7 @@ int get_fat_sector( FAT_FILESYSTEM* fs, SECTOR cluster, SECTOR* fatSector, DWORD
 	DWORD	fatOffset;
 
 	switch( fs->FATType )
-	{
+	{//파일 시스템에 맞게 fatOffset을 설정
 	case FAT32:
 		fatOffset = cluster * 4; 
 		break;
@@ -362,10 +362,11 @@ int prepare_fat_sector( FAT_FILESYSTEM* fs, SECTOR cluster, SECTOR* fatSector, D
 {
 	get_fat_sector( fs, cluster, fatSector, fatEntryOffset ); 
 	// 몇번째 섹터의 몇번째 entry인지
-	fs->disk->read_sector( fs->disk, *fatSector, sector ); //disk에 read
+	fs->disk->read_sector( fs->disk, *fatSector, sector ); //disk의 해당 *fatSector를 read해서 sector버퍼에 저장
 
 	if( fs->FATType == FAT12 && *fatEntryOffset == fs->bpb.bytesPerSector - 1 ) //?
 	{
+		// fatEntryOffset이 bytesPerSector즉 sector의 마지막 지점이면 다음 섹터를 sector버퍼로 read
 		fs->disk->read_sector( fs->disk, *fatSector + 1, &sector[fs->bpb.bytesPerSector] );
 		return 1;
 	}
@@ -374,7 +375,7 @@ int prepare_fat_sector( FAT_FILESYSTEM* fs, SECTOR cluster, SECTOR* fatSector, D
 }
 
 /* Read a FAT entry from FAT Table */
-// FATable에서 cluster 번호에 해당하는 파일(의 다음?)정보를 읽어옴
+// FATable에서 cluster 번호 위치에 적힌 번호를 리턴 <다음 클러스터 불러옴>
 DWORD get_fat( FAT_FILESYSTEM* fs, SECTOR cluster )
 {
 	BYTE	sector[MAX_SECTOR_SIZE * 2]; 
@@ -390,6 +391,7 @@ DWORD get_fat( FAT_FILESYSTEM* fs, SECTOR cluster )
 	switch( fs->FATType )
 	{
 		// FAT 버전에 따라서 FAT table의 크기가 다르기 때문에 하나의 entry를 추출해서 return하는 방식이 다름
+		// 결국 하는 짓은 해당 섹터[오프셋]위치의 파일의 주소를 리턴
 	case FAT32:
 		return ( *( ( DWORD* )&sector[fatEntryOffset] ) ) & 0xFFFFFFF;
 	case FAT16:
@@ -419,9 +421,10 @@ int set_fat( FAT_FILESYSTEM* fs, SECTOR cluster, DWORD value )
 	int		result;
 
 	result = prepare_fat_sector( fs, cluster, &fatSector, &fatEntryOffset, sector );
-	
+	// 몇번째 Sector의 몇번째 byteoffset인지 계산해서
 	switch( fs->FATType )
 	{
+		//그 장소에 value(eoc)를 파일시스템에 맞게 비트연산 해서 삽입
 	case FAT32:
 		value &= 0x0FFFFFFF;
 		*( ( DWORD* )&sector[fatEntryOffset] ) &= 0xF0000000;
@@ -447,7 +450,7 @@ int set_fat( FAT_FILESYSTEM* fs, SECTOR cluster, DWORD value )
 
 	fs->disk->write_sector( fs->disk, fatSector, sector );
 	//sector[fatEntryOffset]를 설정해서 fatSector에 write
-	if( result ) //?
+	if( result ) //prepare에서 sector offset이 sector 넘어가면 , 다음 섹터에 write
 		fs->disk->write_sector( fs->disk, fatSector + 1, &sector[fs->bpb.bytesPerSector] );
 
 	return FAT_SUCCESS;
@@ -764,7 +767,7 @@ int fat_read_dir( FAT_NODE* dir, FAT_NODE_ADD adder, void* list )
 		for( i = 0; i < rootEntryCount; i++ )
 		{
 			read_root_sector( dir->fs, i, sector );
-			location.cluster = 0;
+			location.cluster = 0; //root라서
 			location.sector = i;
 			location.number = 0;
 			if( read_dir_from_sector( dir->fs, &location, sector, adder, list ) )
@@ -1270,7 +1273,7 @@ int fat_mkdir( const FAT_NODE* parent, const char* entryName, FAT_NODE* ret )
 	ZeroMemory( ret, sizeof( FAT_NODE ) );
 	memcpy( ret->entry.name, name, MAX_ENTRY_NAME_LENGTH ); // 이름 설정
 	ret->entry.attribute = ATTR_DIRECTORY; // 용도를 디렉토리로 설정
-	firstCluster = alloc_free_cluster( parent->fs ); //freecluster 번호 할당
+	firstCluster = alloc_free_cluster( parent->fs ); //freecluster 할당
 	// newEntry<ret>에 entryName,attribute을 등록, firstcluster가져오기
 
 	if( firstCluster == 0 )
@@ -1281,7 +1284,7 @@ int fat_mkdir( const FAT_NODE* parent, const char* entryName, FAT_NODE* ret )
 	
 	set_fat( parent->fs, firstCluster, get_MS_EOC( parent->fs->FATType ) ); 
 	// FATable에 해당 클러스터 FATentry를 EOC로 바꿈         //get_MS_EOC : FAT시스템에 맞는 EOC호출
-	SET_FIRST_CLUSTER( ret->entry, firstCluster ); // ret->entry에 firstcluster등록
+	SET_FIRST_CLUSTER( ret->entry, firstCluster ); // ret->entry의 firstClusterLO에 firstcluster변수<할당 받은 클러스터>를 등록
 	result = insert_entry( parent, ret, 0 ); // parent아래에 ret삽입
 	if( result )
 		return FAT_ERROR;
@@ -1294,7 +1297,7 @@ int fat_mkdir( const FAT_NODE* parent, const char* entryName, FAT_NODE* ret )
 	dotNode.entry.name[0] = '.';
 	dotNode.entry.attribute = ATTR_DIRECTORY;
 	SET_FIRST_CLUSTER( dotNode.entry, firstCluster ); 
-	// dotNode.entry에 firstcluser<현재위치> 등록
+	// dotNode.entry<현재위치>의 irstClusterLO에 firstcluster변수<할당 받은 클러스터>를 등록
 	insert_entry( ret, &dotNode, DIR_ENTRY_OVERWRITE ); //ret아래에 . 삽입
 
 	/* dotdotEntry */
@@ -1304,7 +1307,7 @@ int fat_mkdir( const FAT_NODE* parent, const char* entryName, FAT_NODE* ret )
 	dotdotNode.entry.name[1] = '.';
 	dotdotNode.entry.attribute = ATTR_DIRECTORY;
 	SET_FIRST_CLUSTER( dotdotNode.entry, GET_FIRST_CLUSTER( parent->entry ) );
-	// dotdotNode.entry에 parent->entry->firstcluser<상위폴더위치>등록
+	// dotdotNode.entry<상위폴더위치>의 irstClusterLO에 firstcluster변수<할당 받은 클러스터>를 등록
 	insert_entry( ret, &dotdotNode, 0 ); // ret아래에 .. 삽입
 
 	return FAT_SUCCESS;
@@ -1439,6 +1442,7 @@ int fat_read( FAT_NODE* file, unsigned long offset, unsigned long length, char* 
 
 	while( offset > clusterOffset )
 	{ // offset이 clusteroffset보다 클 수 없음(?)
+	// 만약 크면 다음 클러스터 가져옴
 		currentCluster = get_fat( file->fs, currentCluster );
 		clusterOffset += clusterSize;
 		clusterSeq++;
@@ -1452,18 +1456,16 @@ int fat_read( FAT_NODE* file, unsigned long offset, unsigned long length, char* 
 		// offset / cluster한개 사이즈로 넘버링
 		if( clusterSeq != clusterNumber ) 
 		{
-			// 처음엔 둘다 0보다 큼, 읽으면서 currentOffset이 증가하고 결국 clusterNumber++됨 따라서 다음 cluster읽어야 할 차례
-
-			clusterSeq++;
+			// 처음엔 둘다 0, 읽으면서 currentOffset이 증가하고 결국 clusterNumber++됨 따라서 다음 cluster읽어야 할 차례
+			clusterSeq++; // 클러스터 SEQ 증가 시키고
 			currentCluster = get_fat( file->fs, currentCluster ); //다음 클러스터 가져옴
 		}
 		sectorNumber	= ( currentOffset / ( file->fs->bpb.bytesPerSector ) ) % file->fs->bpb.sectorsPerCluster;
 		// 클러스터 내 sector num
 		sectorOffset	= currentOffset % file->fs->bpb.bytesPerSector;
 		// sector 내 byte offset
-
 		if( read_data_sector( file->fs, currentCluster, sectorNumber, sector ) ) //한 섹터 내용 data에 복사
-			break;
+			break; // disk 입출력 오류난 경우(-1리턴함)
 
 		copyLength = MIN( file->fs->bpb.bytesPerSector - sectorOffset, readEnd - currentOffset );
 		//한 섹터씩 읽으므로 sectoroffset은 항상0이므로 결국 한 섹터 크기임 
@@ -1548,7 +1550,9 @@ int fat_write( FAT_NODE* file, unsigned long offset, unsigned long length, const
 		// cluster 에서의 sector offset
 
 		sectorOffset	= currentOffset % file->fs->bpb.bytesPerSector;
-		// sector 에서의 byte offset
+		// sector 에서의 byte offset 
+		// sectorOffset는 마지막을 제외하고는 항상 0임 왜냐하면 currentOffset이 copyLength(한 섹터 크기)만큼 증가하기 때문
+		// 마지막엔 남은 offset 수 이므로 0이 아님
 
 		copyLength = MIN( file->fs->bpb.bytesPerSector - sectorOffset, readEnd - currentOffset );
 		// 보통 한 섹터씩 작성하므로 작성할 크기가 한 섹터 넘는 경우 file->fs->bpb.bytesPerSector - sectorOffset는 bytesPerSector와 동일
@@ -1556,6 +1560,7 @@ int fat_write( FAT_NODE* file, unsigned long offset, unsigned long length, const
 
 		if( copyLength != file->fs->bpb.bytesPerSector )
 		{
+			//마지막에 copyLength와 한 섹터 크기가 달라짐 
 			if( read_data_sector( file->fs, currentCluster, sectorNumber, sector ) )
 				break;
 		}
@@ -1582,7 +1587,7 @@ int fat_write( FAT_NODE* file, unsigned long offset, unsigned long length, const
 /******************************************************************************/
 int fat_remove( FAT_NODE* file )
 {
-	if( file->entry.attribute & ATTR_DIRECTORY )		/* Is directory? */
+	if( file->entry.attribute & ATTR_DIRECTORY )		/* 디렉토리면 에러*/
 		return FAT_ERROR;
 
 	file->entry.name[0] = DIR_ENTRY_FREE;

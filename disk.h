@@ -16,8 +16,8 @@
 
 typedef struct DISK_OPERATIONS
 {
-	int		( *read_sector	)( struct DISK_OPERATIONS*, SECTOR, void* );
-	int		( *write_sector	)( struct DISK_OPERATIONS*, SECTOR, const void* ); // SECTOR에 const void* write
+	int		( *read_sector	)( struct DISK_OPERATIONS*, SECTOR, void* ); //한 섹터 내용 data에 복사
+	int		( *write_sector	)( struct DISK_OPERATIONS*, SECTOR, const void* ); // 한 섹터에 data내용 복사
 	SECTOR	numberOfSectors;
 	int		bytesPerSector;
 	void*	pdata;

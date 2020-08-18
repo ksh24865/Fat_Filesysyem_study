@@ -20,14 +20,14 @@ typedef struct CLUSTER_LIST_ELEMENT
 {
 	SECTOR				clusters[CLUSTERS_PER_ELEMENT]; 
 
-	struct CLUSTER_LIST_ELEMENT*	next; // eoc 나오기 전까지 next 이동
+	struct CLUSTER_LIST_ELEMENT*	next; // eoc 나오기 전까지 next 이동 하며 데이터의 주소를 알려줌
 } CLUSTER_LIST_ELEMENT;
 
 typedef struct
 {
-	UINT32				count;
-	UINT32				pushOffset;
-	UINT32				popOffset;
+	UINT32				count; // 
+	UINT32				pushOffset; //offset
+	UINT32				popOffset; //offset 
 
 	CLUSTER_LIST_ELEMENT*	first; //맨앞
 	CLUSTER_LIST_ELEMENT*	last; //맨뒤

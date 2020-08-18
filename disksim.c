@@ -42,8 +42,10 @@ int disksim_init( SECTOR numberOfSectors, unsigned int bytesPerSector, DISK_OPER
 		disksim_uninit( disk );
 		return -1;
 	}
-
+	
 	disk->read_sector	= disksim_read;
+
+	
 	disk->write_sector	= disksim_write;
 	disk->numberOfSectors	= numberOfSectors;
 	disk->bytesPerSector	= bytesPerSector;
@@ -65,7 +67,7 @@ int disksim_read( DISK_OPERATIONS* this, SECTOR sector, void* data )
 	char* disk = ( ( DISK_MEMORY* )this->pdata )->address; 
 
 	if( sector < 0 || sector >= this->numberOfSectors )
-		return -1;
+		return -1; //오류나면 -1
 
 	memcpy( data, &disk[sector * this->bytesPerSector], this->bytesPerSector ); //한 섹터 내용 data에 복사
 
